@@ -1,32 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../models/transaction_model.dart';
+import '../services/transaction_service.dart';
 import '../utils/app_colors.dart';
+import '../utils/currency_formatter.dart';
 import 'edit_transaction_page.dart';
 
-class DetailTransactionPage extends StatelessWidget {
+class DetailTransactionPage extends StatefulWidget {
   final TransactionModel transaction;
-  final int index;
 
   const DetailTransactionPage({
     super.key,
     required this.transaction,
-    required this.index,
   });
 
-  String formatRupiah(double amount) {
-    final value = amount.toStringAsFixed(0);
+  @override
+  State<DetailTransactionPage> createState() => _DetailTransactionPageState();
+}
 
-    final result = value.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (match) => '${match[1]}.',
-    );
+class _DetailTransactionPageState extends State<DetailTransactionPage> {
+  final TransactionService service = TransactionService();
 
-    return 'Rp$result';
-  }
+  bool isDeleting = false;
 
-  void confirmDelete(BuildContext context) {
-    showDialog(
+  Future<void> confirmDelete() async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -37,17 +35,13 @@ class DetailTransactionPage extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(context, false);
               },
               child: const Text('Batal'),
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context, {
-                  'action': 'delete',
-                  'index': index,
-                });
+                Navigator.pop(context, true);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -59,20 +53,66 @@ class DetailTransactionPage extends StatelessWidget {
         );
       },
     );
+
+    if (result == true) {
+      deleteTransaction();
+    }
   }
-    Future<void> goToEditPage(BuildContext context) async {
+
+  Future<void> deleteTransaction() async {
+    setState(() {
+      isDeleting = true;
+    });
+
+    try {
+      await service.deleteTransaction(widget.transaction.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transaksi berhasil dihapus'),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menghapus transaksi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDeleting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> goToEditPage() async {
   final result = await Navigator.push(
     context,
     MaterialPageRoute(
       builder: (context) => EditTransactionPage(
-        transaction: transaction,
-        index: index,
+        transaction: widget.transaction,
       ),
     ),
   );
 
-  if (result != null && result is Map<String, dynamic>) {
-    Navigator.pop(context, result);
+  if (result == true) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Transaksi berhasil diperbarui'),
+      ),
+    );
+
+    Navigator.pop(context, true);
   }
 }
 
@@ -129,7 +169,8 @@ class DetailTransactionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isIncome = transaction.type == 'Pemasukan';
+    final transaction = widget.transaction;
+    final bool isIncome = transaction.isIncome;
     final Color typeColor = isIncome ? Colors.green : AppColors.primary;
 
     return Scaffold(
@@ -145,15 +186,11 @@ class DetailTransactionPage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {
-              goToEditPage(context);
-            },
+            onPressed: goToEditPage,
             icon: const Icon(Icons.edit_outlined),
           ),
           IconButton(
-            onPressed: () {
-              confirmDelete(context);
-            },
+            onPressed: isDeleting ? null : confirmDelete,
             icon: const Icon(Icons.delete_outline),
           ),
         ],
@@ -188,7 +225,7 @@ class DetailTransactionPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  formatRupiah(transaction.amount),
+                  CurrencyFormatter.format(transaction.amount),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -224,6 +261,16 @@ class DetailTransactionPage extends StatelessWidget {
             value: transaction.note,
             icon: Icons.note_alt_outlined,
           ),
+
+          if (isDeleting)
+            const Padding(
+              padding: EdgeInsets.only(top: 20),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
         ],
       ),
     );

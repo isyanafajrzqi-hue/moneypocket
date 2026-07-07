@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/transaction_model.dart';
+import '../services/transaction_service.dart';
 import '../utils/app_colors.dart';
+import '../utils/validators.dart';
 
 class AddTransactionPage extends StatefulWidget {
   const AddTransactionPage({super.key});
@@ -12,6 +14,7 @@ class AddTransactionPage extends StatefulWidget {
 
 class _AddTransactionPageState extends State<AddTransactionPage> {
   final formKey = GlobalKey<FormState>();
+  final TransactionService service = TransactionService();
 
   final titleController = TextEditingController();
   final amountController = TextEditingController();
@@ -19,6 +22,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final noteController = TextEditingController();
 
   String selectedType = 'Pengeluaran';
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -36,31 +40,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     dateController.dispose();
     noteController.dispose();
     super.dispose();
-  }
-
-  String? validateTitle(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Judul transaksi wajib diisi';
-    }
-    return null;
-  }
-
-  String? validateAmount(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Nominal wajib diisi';
-    }
-
-    final amount = double.tryParse(value.trim());
-
-    if (amount == null) {
-      return 'Nominal harus berupa angka';
-    }
-
-    if (amount <= 0) {
-      return 'Nominal harus lebih dari 0';
-    }
-
-    return null;
   }
 
   Future<void> chooseDate() async {
@@ -81,10 +60,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
-  void saveTransaction() {
-    if (formKey.currentState!.validate()) {
-      final newTransaction = TransactionModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+  Future<void> saveTransaction() async {
+    if (!formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final transaction = TransactionModel(
+        id: '',
         title: titleController.text.trim(),
         type: selectedType,
         amount: double.parse(amountController.text.trim()),
@@ -92,7 +79,25 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         note: noteController.text.trim(),
       );
 
-      Navigator.pop(context, newTransaction);
+      await service.addTransaction(transaction);
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan transaksi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -111,7 +116,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: AppColors.border),
+        borderSide: const BorderSide(
+          color: AppColors.border,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
@@ -122,7 +129,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: AppColors.primary),
+        borderSide: const BorderSide(
+          color: AppColors.primary,
+        ),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
@@ -143,7 +152,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         foregroundColor: Colors.white,
         title: const Text(
           'Tambah Transaksi',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -158,13 +169,20 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(
+                    color: AppColors.border,
+                  ),
                 ),
                 child: Column(
                   children: [
                     TextFormField(
                       controller: titleController,
-                      validator: validateTitle,
+                      validator: (value) {
+                        return Validators.requiredField(
+                          value,
+                          'Judul transaksi',
+                        );
+                      },
                       decoration: inputStyle(
                         label: 'Judul Transaksi',
                         icon: Icons.title_rounded,
@@ -196,7 +214,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: amountController,
-                      validator: validateAmount,
+                      validator: Validators.amount,
                       keyboardType: TextInputType.number,
                       decoration: inputStyle(
                         label: 'Nominal',
@@ -208,6 +226,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       controller: dateController,
                       readOnly: true,
                       onTap: chooseDate,
+                      validator: (value) {
+                        return Validators.requiredField(value, 'Tanggal');
+                      },
                       decoration: inputStyle(
                         label: 'Tanggal',
                         icon: Icons.calendar_month_outlined,
@@ -230,7 +251,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: saveTransaction,
+                  onPressed: isLoading ? null : saveTransaction,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -238,13 +259,17 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'Simpan Transaksi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                        )
+                      : const Text(
+                          'Simpan Transaksi',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],

@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../models/transaction_model.dart';
+import '../services/transaction_service.dart';
 import '../utils/app_colors.dart';
+import '../utils/validators.dart';
 
 class EditTransactionPage extends StatefulWidget {
   final TransactionModel transaction;
-  final int index;
 
   const EditTransactionPage({
     super.key,
     required this.transaction,
-    required this.index,
   });
 
   @override
@@ -19,6 +19,7 @@ class EditTransactionPage extends StatefulWidget {
 
 class _EditTransactionPageState extends State<EditTransactionPage> {
   final formKey = GlobalKey<FormState>();
+  final TransactionService service = TransactionService();
 
   final titleController = TextEditingController();
   final amountController = TextEditingController();
@@ -26,6 +27,7 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
   final noteController = TextEditingController();
 
   late String selectedType;
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -47,40 +49,6 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
     super.dispose();
   }
 
-  String formatDate(DateTime date) {
-    final year = date.year;
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-
-    return '$year-$month-$day';
-  }
-
-  String? validateTitle(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Judul transaksi wajib diisi';
-    }
-
-    return null;
-  }
-
-  String? validateAmount(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Nominal wajib diisi';
-    }
-
-    final amount = double.tryParse(value.trim());
-
-    if (amount == null) {
-      return 'Nominal harus berupa angka';
-    }
-
-    if (amount <= 0) {
-      return 'Nominal harus lebih dari 0';
-    }
-
-    return null;
-  }
-
   Future<void> chooseDate() async {
     final currentDate = DateTime.tryParse(dateController.text) ?? DateTime.now();
 
@@ -93,14 +61,23 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
 
     if (pickedDate != null) {
       setState(() {
-        dateController.text = formatDate(pickedDate);
+        dateController.text =
+            '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
       });
     }
   }
 
-  void saveEditTransaction() {
-    if (formKey.currentState!.validate()) {
-      final editedTransaction = TransactionModel(
+  Future<void> updateTransaction() async {
+    if (!formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final updatedTransaction = TransactionModel(
         id: widget.transaction.id,
         title: titleController.text.trim(),
         type: selectedType,
@@ -109,11 +86,25 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
         note: noteController.text.trim(),
       );
 
-      Navigator.pop(context, {
-        'action': 'edit',
-        'index': widget.index,
-        'transaction': editedTransaction,
-      });
+      await service.updateTransaction(updatedTransaction);
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memperbarui transaksi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -193,7 +184,12 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
                   children: [
                     TextFormField(
                       controller: titleController,
-                      validator: validateTitle,
+                      validator: (value) {
+                        return Validators.requiredField(
+                          value,
+                          'Judul transaksi',
+                        );
+                      },
                       decoration: inputStyle(
                         label: 'Judul Transaksi',
                         icon: Icons.title_rounded,
@@ -225,7 +221,7 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: amountController,
-                      validator: validateAmount,
+                      validator: Validators.amount,
                       keyboardType: TextInputType.number,
                       decoration: inputStyle(
                         label: 'Nominal',
@@ -237,6 +233,9 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
                       controller: dateController,
                       readOnly: true,
                       onTap: chooseDate,
+                      validator: (value) {
+                        return Validators.requiredField(value, 'Tanggal');
+                      },
                       decoration: inputStyle(
                         label: 'Tanggal',
                         icon: Icons.calendar_month_outlined,
@@ -259,7 +258,7 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: saveEditTransaction,
+                  onPressed: isLoading ? null : updateTransaction,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -267,13 +266,17 @@ class _EditTransactionPageState extends State<EditTransactionPage> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'Simpan Perubahan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                        )
+                      : const Text(
+                          'Simpan Perubahan',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],

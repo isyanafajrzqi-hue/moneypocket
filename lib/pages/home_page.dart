@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../models/transaction_model.dart';
+import '../services/transaction_service.dart';
 import '../utils/app_colors.dart';
-import 'login_page.dart';
+import '../widgets/summary_card.dart';
+import '../widgets/transaction_card.dart';
 import 'add_transaction_page.dart';
 import 'detail_transaction_page.dart';
+import 'login_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -14,38 +17,29 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<TransactionModel> transactions = [
-    TransactionModel(
-      id: '1',
-      title: 'Uang Saku',
-      type: 'Pemasukan',
-      amount: 100000,
-      date: '2026-07-07',
-      note: 'Uang saku harian',
-    ),
-    TransactionModel(
-      id: '2',
-      title: 'Beli Kebab',
-      type: 'Pengeluaran',
-      amount: 15000,
-      date: '2026-07-07',
-      note: 'Makan malam',
-    ),
-    TransactionModel(
-      id: '3',
-      title: 'Beli Minum',
-      type: 'Pengeluaran',
-      amount: 8000,
-      date: '2026-07-07',
-      note: 'Es teh',
-    ),
-  ];
+  final TransactionService service = TransactionService();
 
-  double getTotalIncome() {
+  late Future<List<TransactionModel>> futureTransactions;
+
+  @override
+  void initState() {
+    super.initState();
+    futureTransactions = service.getTransactions();
+  }
+
+  Future<void> refreshTransactions() async {
+    setState(() {
+      futureTransactions = service.getTransactions();
+    });
+
+    await futureTransactions;
+  }
+
+  double getTotalIncome(List<TransactionModel> transactions) {
     double total = 0;
 
     for (final transaction in transactions) {
-      if (transaction.type == 'Pemasukan') {
+      if (transaction.isIncome) {
         total += transaction.amount;
       }
     }
@@ -53,11 +47,11 @@ class _HomePageState extends State<HomePage> {
     return total;
   }
 
-  double getTotalExpense() {
+  double getTotalExpense(List<TransactionModel> transactions) {
     double total = 0;
 
     for (final transaction in transactions) {
-      if (transaction.type == 'Pengeluaran') {
+      if (transaction.isExpense) {
         total += transaction.amount;
       }
     }
@@ -65,15 +59,40 @@ class _HomePageState extends State<HomePage> {
     return total;
   }
 
-  String formatRupiah(double amount) {
-    final value = amount.toStringAsFixed(0);
-
-    final result = value.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (match) => '${match[1]}.',
+  Future<void> goToAddTransaction() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddTransactionPage(),
+      ),
     );
 
-    return 'Rp$result';
+    if (result == true) {
+      await refreshTransactions();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transaksi berhasil ditambahkan'),
+        ),
+      );
+    }
+  }
+
+  Future<void> goToDetailTransaction(TransactionModel transaction) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DetailTransactionPage(
+          transaction: transaction,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await refreshTransactions();
+    }
   }
 
   void showAboutApp() {
@@ -84,7 +103,8 @@ class _HomePageState extends State<HomePage> {
           title: const Text('Tentang PocketMoney'),
           content: const Text(
             'PocketMoney adalah aplikasi catatan keuangan harian berbasis Flutter. '
-            'Aplikasi ini membantu pengguna mencatat pemasukan, pengeluaran, dan melihat saldo akhir.',
+            'Aplikasi ini menggunakan Firebase Realtime Database untuk menyimpan, '
+            'menampilkan, mengedit, dan menghapus data transaksi.',
           ),
           actions: [
             TextButton(
@@ -108,184 +128,57 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> goToAddTransaction() async {
-  final result = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => const AddTransactionPage(),
-    ),
-  );
-
-  if (result != null && result is TransactionModel) {
-    setState(() {
-      transactions.insert(0, result);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Transaksi berhasil ditambahkan'),
-      ),
-    );
-  }
-}
-   Future<void> goToDetailTransaction(
-  TransactionModel transaction,
-  int index,
-) async {
-  final result = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => DetailTransactionPage(
-        transaction: transaction,
-        index: index,
-      ),
-    ),
-  );
-
-  if (result != null && result is Map<String, dynamic>) {
-    if (result['action'] == 'delete') {
-      setState(() {
-        transactions.removeAt(result['index']);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Transaksi berhasil dihapus'),
-        ),
-      );
-    }
-
-    if (result['action'] == 'edit') {
-      setState(() {
-        transactions[result['index']] = result['transaction'];
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Transaksi berhasil diperbarui'),
-        ),
-      );
-    }
-     }
-    }   
-
-  Widget summaryCard({
-    required String title,
-    required double amount,
-    required IconData icon,
-    required Color color,
-  }) {
+  Widget emptyTransactionView() {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color: Colors.white,
-            size: 28,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            formatRupiah(amount),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget transactionCard(TransactionModel transaction, int index) {
-  final bool isIncome = transaction.type == 'Pemasukan';
-
-  return GestureDetector(
-    onTap: () {
-      goToDetailTransaction(transaction, index);
-    },
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: AppColors.border,
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: isIncome
-                ? Colors.green.withOpacity(0.12)
-                : AppColors.primary.withOpacity(0.12),
-            child: Icon(
-              isIncome
-                  ? Icons.arrow_downward_rounded
-                  : Icons.arrow_upward_rounded,
-              color: isIncome ? Colors.green : AppColors.primary,
-            ),
+          const Icon(
+            Icons.receipt_long_outlined,
+            color: AppColors.textGrey,
+            size: 52,
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  transaction.title,
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${transaction.type} • ${transaction.date}',
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            formatRupiah(transaction.amount),
+          const SizedBox(height: 12),
+          const Text(
+            'Belum ada transaksi',
             style: TextStyle(
-              color: isIncome ? Colors.green : AppColors.primary,
-              fontSize: 14,
+              color: AppColors.textDark,
               fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tambahkan pemasukan atau pengeluaran pertamamu.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textGrey,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: goToAddTransaction,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Tambah Transaksi'),
           ),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final totalIncome = getTotalIncome();
-    final totalExpense = getTotalExpense();
-    final balance = totalIncome - totalExpense;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -308,86 +201,132 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-        children: [
-          const Text(
-            'Halo, Selamat Datang 👋',
-            style: TextStyle(
-              color: AppColors.textDark,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Kelola pemasukan dan pengeluaran harianmu di sini.',
-            style: TextStyle(
-              color: AppColors.textGrey,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 22),
+      body: FutureBuilder<List<TransactionModel>>(
+        future: futureTransactions,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+              ),
+            );
+          }
 
-          summaryCard(
-            title: 'Saldo Akhir',
-            amount: balance,
-            icon: Icons.account_balance_wallet_rounded,
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Terjadi kesalahan:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final transactions = snapshot.data ?? [];
+
+          final totalIncome = getTotalIncome(transactions);
+          final totalExpense = getTotalExpense(transactions);
+          final balance = totalIncome - totalExpense;
+
+          return RefreshIndicator(
             color: AppColors.primary,
-          ),
-
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              Expanded(
-                child: summaryCard(
-                  title: 'Pemasukan',
-                  amount: totalIncome,
-                  icon: Icons.arrow_downward_rounded,
-                  color: Colors.green,
+            onRefresh: refreshTransactions,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+              children: [
+                const Text(
+                  'Halo, Selamat Datang 👋',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: summaryCard(
-                  title: 'Pengeluaran',
-                  amount: totalExpense,
-                  icon: Icons.arrow_upward_rounded,
-                  color: AppColors.secondary,
+                const SizedBox(height: 6),
+                const Text(
+                  'Kelola pemasukan dan pengeluaran harianmu di sini.',
+                  style: TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(height: 22),
 
-          const SizedBox(height: 26),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Riwayat Transaksi',
-                style: TextStyle(
-                  color: AppColors.textDark,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                SummaryCard(
+                  title: 'Saldo Akhir',
+                  amount: balance,
+                  icon: Icons.account_balance_wallet_rounded,
+                  color: AppColors.primary,
                 ),
-              ),
-              Text(
-                '${transactions.length} data',
-                style: const TextStyle(
-                  color: AppColors.textGrey,
-                  fontSize: 13,
+
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: SummaryCard(
+                        title: 'Pemasukan',
+                        amount: totalIncome,
+                        icon: Icons.arrow_downward_rounded,
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SummaryCard(
+                        title: 'Pengeluaran',
+                        amount: totalExpense,
+                        icon: Icons.arrow_upward_rounded,
+                        color: AppColors.secondary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
 
-          const SizedBox(height: 12),
+                const SizedBox(height: 26),
 
-          for (int i = 0; i < transactions.length; i++)
-            transactionCard(transactions[i], i),
-        ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Riwayat Transaksi',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '${transactions.length} data',
+                      style: const TextStyle(
+                        color: AppColors.textGrey,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                if (transactions.isEmpty)
+                  emptyTransactionView()
+                else
+                  for (final transaction in transactions)
+                    TransactionCard(
+                      transaction: transaction,
+                      onTap: () {
+                        goToDetailTransaction(transaction);
+                      },
+                    ),
+              ],
+            ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: goToAddTransaction,

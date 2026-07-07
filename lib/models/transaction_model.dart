@@ -36,24 +36,6 @@ class TransactionModel {
     };
   }
 
-  TransactionModel copyWith({
-    String? id,
-    String? title,
-    String? type,
-    double? amount,
-    String? date,
-    String? note,
-  }) {
-    return TransactionModel(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      type: type ?? this.type,
-      amount: amount ?? this.amount,
-      date: date ?? this.date,
-      note: note ?? this.note,
-    );
-  }
-
   bool get isIncome => type == 'Pemasukan';
 
   bool get isExpense => type == 'Pengeluaran';

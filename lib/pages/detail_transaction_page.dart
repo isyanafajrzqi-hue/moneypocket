@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../models/transaction_model.dart';
 import '../utils/app_colors.dart';
+import 'edit_transaction_page.dart';
 
 class DetailTransactionPage extends StatelessWidget {
-  final Map<String, dynamic> transaction;
+  final TransactionModel transaction;
   final int index;
 
   const DetailTransactionPage({
@@ -58,6 +60,21 @@ class DetailTransactionPage extends StatelessWidget {
       },
     );
   }
+    Future<void> goToEditPage(BuildContext context) async {
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => EditTransactionPage(
+        transaction: transaction,
+        index: index,
+      ),
+    ),
+  );
+
+  if (result != null && result is Map<String, dynamic>) {
+    Navigator.pop(context, result);
+  }
+}
 
   Widget detailItem({
     required String title,
@@ -95,7 +112,7 @@ class DetailTransactionPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  value.isEmpty ? '-' : value,
+                  value.trim().isEmpty ? '-' : value,
                   style: const TextStyle(
                     color: AppColors.textDark,
                     fontSize: 16,
@@ -112,8 +129,7 @@ class DetailTransactionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isIncome = transaction['type'] == 'Pemasukan';
-
+    final bool isIncome = transaction.type == 'Pemasukan';
     final Color typeColor = isIncome ? Colors.green : AppColors.primary;
 
     return Scaffold(
@@ -130,11 +146,7 @@ class DetailTransactionPage extends StatelessWidget {
         actions: [
           IconButton(
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Halaman edit akan dibuat setelah ini'),
-                ),
-              );
+              goToEditPage(context);
             },
             icon: const Icon(Icons.edit_outlined),
           ),
@@ -155,13 +167,6 @@ class DetailTransactionPage extends StatelessWidget {
             decoration: BoxDecoration(
               color: typeColor,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: typeColor.withOpacity(0.18),
-                  blurRadius: 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,11 +176,11 @@ class DetailTransactionPage extends StatelessWidget {
                       ? Icons.arrow_downward_rounded
                       : Icons.arrow_upward_rounded,
                   color: Colors.white,
-                  size: 34,
+                  size: 36,
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  transaction['type'],
+                  transaction.type,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -183,7 +188,7 @@ class DetailTransactionPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  formatRupiah(transaction['amount']),
+                  formatRupiah(transaction.amount),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -198,25 +203,25 @@ class DetailTransactionPage extends StatelessWidget {
 
           detailItem(
             title: 'Judul Transaksi',
-            value: transaction['title'],
+            value: transaction.title,
             icon: Icons.title_rounded,
           ),
 
           detailItem(
             title: 'Jenis Transaksi',
-            value: transaction['type'],
+            value: transaction.type,
             icon: Icons.category_outlined,
           ),
 
           detailItem(
             title: 'Tanggal',
-            value: transaction['date'],
+            value: transaction.date,
             icon: Icons.calendar_month_outlined,
           ),
 
           detailItem(
             title: 'Catatan',
-            value: transaction['note'],
+            value: transaction.note,
             icon: Icons.note_alt_outlined,
           ),
         ],

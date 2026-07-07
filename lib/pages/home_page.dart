@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/transaction_model.dart';
 import '../utils/app_colors.dart';
 import 'login_page.dart';
+import 'add_transaction_page.dart';
+import 'detail_transaction_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -106,13 +108,66 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void addTransactionTemporary() {
+  Future<void> goToAddTransaction() async {
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => const AddTransactionPage(),
+    ),
+  );
+
+  if (result != null && result is TransactionModel) {
+    setState(() {
+      transactions.insert(0, result);
+    });
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Halaman tambah transaksi akan dibuat setelah ini'),
+        content: Text('Transaksi berhasil ditambahkan'),
       ),
     );
   }
+}
+   Future<void> goToDetailTransaction(
+  TransactionModel transaction,
+  int index,
+) async {
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => DetailTransactionPage(
+        transaction: transaction,
+        index: index,
+      ),
+    ),
+  );
+
+  if (result != null && result is Map<String, dynamic>) {
+    if (result['action'] == 'delete') {
+      setState(() {
+        transactions.removeAt(result['index']);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transaksi berhasil dihapus'),
+        ),
+      );
+    }
+
+    if (result['action'] == 'edit') {
+      setState(() {
+        transactions[result['index']] = result['transaction'];
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transaksi berhasil diperbarui'),
+        ),
+      );
+    }
+     }
+    }   
 
   Widget summaryCard({
     required String title,
@@ -156,10 +211,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget transactionCard(TransactionModel transaction) {
-    final bool isIncome = transaction.type == 'Pemasukan';
+  Widget transactionCard(TransactionModel transaction, int index) {
+  final bool isIncome = transaction.type == 'Pemasukan';
 
-    return Container(
+  return GestureDetector(
+    onTap: () {
+      goToDetailTransaction(transaction, index);
+    },
+    child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -217,8 +276,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +309,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
         children: [
           const Text(
             'Halo, Selamat Datang 👋',
@@ -325,12 +385,12 @@ class _HomePageState extends State<HomePage> {
 
           const SizedBox(height: 12),
 
-          for (final transaction in transactions)
-            transactionCard(transaction),
+          for (int i = 0; i < transactions.length; i++)
+            transactionCard(transactions[i], i),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: addTransactionTemporary,
+        onPressed: goToAddTransaction,
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add_rounded),
